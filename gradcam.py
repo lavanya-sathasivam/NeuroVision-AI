@@ -2,40 +2,59 @@ import tensorflow as tf
 import numpy as np
 import cv2
 
+
 # ================= FIND LAST CONV LAYER =================
 def find_last_conv_layer(model):
     """
-    Automatically find the last convolutional layer in the model.
+    Robustly find last Conv2D layer even inside nested models.
     """
     for layer in reversed(model.layers):
         if isinstance(layer, tf.keras.layers.Conv2D):
             return layer.name
-    raise ValueError("No Conv2D layer found in the model")
+
+        # check nested model (EfficientNet case)
+        if hasattr(layer, "layers"):
+            for sub_layer in reversed(layer.layers):
+                if isinstance(sub_layer, tf.keras.layers.Conv2D):
+                    return sub_layer.name
+
+    raise ValueError("No Conv2D layer found in model")
+
 
 # ================= GENERATE GRAD-CAM =================
 def generate_gradcam(model, img_array):
     """
-    Generate Grad-CAM heatmap for the given image and model.
-    Returns None if generation fails or heatmap is invalid.
+    Generate Grad-CAM heatmap.
+    Returns None only if something is truly broken.
     """
     try:
         if model is None or img_array is None:
+            print("[GradCAM] Invalid model or image")
             return None
 
-        if img_array.shape[0] != 1:
-            return None  # Must be single image batch
+        if len(img_array.shape) != 4 or img_array.shape[0] != 1:
+            print("[GradCAM] Input must be batch of 1")
+            return None
 
+        # 🔥 FIND LAST CONV LAYER
         last_conv_layer_name = find_last_conv_layer(model)
+        print(f"[GradCAM] Using layer: {last_conv_layer_name}")
 
+        # 🔥 BUILD GRAD MODEL
         grad_model = tf.keras.models.Model(
-            [model.inputs],
-            [model.get_layer(last_conv_layer_name).output, model.output]
+            inputs=model.inputs,
+            outputs=[
+                model.get_layer(last_conv_layer_name).output,
+                model.output
+            ]
         )
 
+        # 🔥 FORWARD + GRADIENT
         with tf.GradientTape() as tape:
             conv_outputs, predictions = grad_model(img_array)
 
             if predictions is None or tf.reduce_any(tf.math.is_nan(predictions)):
+                print("[GradCAM] Invalid predictions")
                 return None
 
             class_idx = tf.argmax(predictions[0])
@@ -43,26 +62,41 @@ def generate_gradcam(model, img_array):
 
         grads = tape.gradient(loss, conv_outputs)
 
-        if grads is None or tf.reduce_any(tf.math.is_nan(grads)):
+        if grads is None:
+            print("[GradCAM] Gradients are None")
             return None
 
+        if tf.reduce_any(tf.math.is_nan(grads)):
+            print("[GradCAM] NaN gradients")
+            return None
+
+        # 🔥 GLOBAL AVERAGE POOLING
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
+        # 🔥 FEATURE MAP
         conv_outputs = conv_outputs[0]
-        heatmap = conv_outputs * pooled_grads[..., tf.newaxis, tf.newaxis]
+
+        # 🔥 CORRECT BROADCASTING (CRITICAL FIX)
+        pooled_grads = tf.reshape(pooled_grads, (1, 1, -1))
+
+        heatmap = conv_outputs * pooled_grads
         heatmap = tf.reduce_sum(heatmap, axis=-1)
 
+        # 🔥 RELU
         heatmap = tf.maximum(heatmap, 0)
 
+        # 🔥 NORMALIZE
         max_val = tf.reduce_max(heatmap)
-        if max_val == 0 or tf.math.is_nan(max_val) or tf.math.is_inf(max_val):
+
+        if not tf.math.is_finite(max_val) or max_val < 1e-6:
+            print("[GradCAM] Invalid heatmap max")
             return None
 
-        heatmap /= max_val
+        heatmap = heatmap / max_val
         heatmap = tf.squeeze(heatmap)
 
-        # Final validation
-        if tf.reduce_any(tf.math.is_nan(heatmap)) or tf.reduce_any(tf.math.is_inf(heatmap)):
+        if tf.reduce_any(tf.math.is_nan(heatmap)):
+            print("[GradCAM] NaN heatmap")
             return None
 
         return heatmap.numpy()
@@ -71,57 +105,53 @@ def generate_gradcam(model, img_array):
         print(f"[GradCAM ERROR]: {e}")
         return None
 
+
 # ================= OVERLAY HEATMAP =================
 def overlay_heatmap(original_img, heatmap):
     """
-    Overlay the Grad-CAM heatmap on the original image.
-    Returns None if overlay fails.
+    Overlay Grad-CAM heatmap on original image.
     """
     try:
         if heatmap is None:
-            raise ValueError("Heatmap is None")
-
-        if np.isnan(heatmap).any() or np.isinf(heatmap).any() or heatmap.size == 0:
-            raise ValueError("Invalid heatmap")
+            print("[Overlay] Heatmap is None")
+            return None
 
         if original_img is None or original_img.size == 0:
-            raise ValueError("Invalid original image")
+            print("[Overlay] Invalid original image")
+            return None
 
         # Ensure heatmap is 2D
         if len(heatmap.shape) != 2:
-            raise ValueError("Heatmap must be 2D")
+            print("[Overlay] Heatmap must be 2D")
+            return None
 
-        # Resize heatmap to match original image size safely
-        try:
-            heatmap_resized = cv2.resize(
-                heatmap.astype(np.float32),
-                (original_img.shape[1], original_img.shape[0]),
-                interpolation=cv2.INTER_LINEAR
-            )
-        except Exception as e:
-            raise ValueError(f"Heatmap resize failed: {e}")
+        # Resize heatmap
+        heatmap_resized = cv2.resize(
+            heatmap.astype(np.float32),
+            (original_img.shape[1], original_img.shape[0]),
+            interpolation=cv2.INTER_LINEAR
+        )
 
-        # Validate resized heatmap
-        if np.isnan(heatmap_resized).any() or np.isinf(heatmap_resized).any():
-            raise ValueError("Resized heatmap contains invalid values")
+        # Normalize
+        heatmap_resized = np.maximum(heatmap_resized, 0)
+        max_val = np.max(heatmap_resized)
 
-        # Normalize and convert to uint8
-        heatmap_max = np.max(heatmap_resized)
-        if heatmap_max == 0 or not np.isfinite(heatmap_max):
-            raise ValueError("Heatmap has zero or invalid maximum value")
+        if max_val < 1e-6:
+            print("[Overlay] Heatmap max too small")
+            return None
 
-        heatmap_normalized = heatmap_resized / heatmap_max
-        heatmap_uint8 = np.uint8(255 * heatmap_normalized)
+        heatmap_resized /= max_val
+        heatmap_uint8 = np.uint8(255 * heatmap_resized)
 
         # Apply colormap
         heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
 
-        # Ensure images have same dimensions
-        if heatmap_colored.shape[:2] != original_img.shape[:2]:
-            raise ValueError("Dimension mismatch between heatmap and original image")
-
-        # Overlay on original image
-        overlay = cv2.addWeighted(original_img, 0.6, heatmap_colored, 0.4, 0)
+        # Convert original to BGR if needed
+        if original_img.shape[-1] == 3:
+            overlay = cv2.addWeighted(original_img, 0.6, heatmap_colored, 0.4, 0)
+        else:
+            print("[Overlay] Unexpected image format")
+            return None
 
         return overlay
 

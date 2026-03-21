@@ -7,7 +7,7 @@ from datetime import datetime
 from PIL import Image
 import altair as alt
 
-from utils import load_model_and_labels, preprocess_image, safe_predict, clinical_decision, validate_image
+from utils import load_model_and_labels, preprocess_image, predict_image, classify_confidence, clinical_decision, validate_image
 import patient_manager as pm
 from gradcam import generate_gradcam, overlay_heatmap
 
@@ -124,10 +124,13 @@ elif st.session_state.current_scan and st.session_state.current_patient:
             st.altair_chart(chart, use_container_width=True)
 
         # Grad-CAM
-        if st.session_state.uploaded_img is not None:
+        if st.session_state.preprocessed_img is not None and st.session_state.uploaded_img is not None:
             st.subheader("AI Focus Areas (Grad-CAM)")
             try:
-                processed = preprocess_image(st.session_state.uploaded_img)
+                processed = st.session_state.preprocessed_img
+                if processed.shape != (1, 224, 224, 3):
+                    raise ValueError(f"Unexpected preprocessed image shape: {processed.shape}")
+
                 heatmap = generate_gradcam(model, processed)
 
                 if heatmap is not None:
@@ -211,25 +214,57 @@ else:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-        # Validate image
-        valid, error_msg = validate_image(img)
-        if not valid:
-            st.error(f"Image validation failed: {error_msg}")
+        if img is None:
+            st.error("Failed to decode uploaded image. Please try a different file.")
         else:
-            st.image(img, caption="Uploaded MRI Scan", width=300)
-            st.session_state.uploaded_img = img
+            if len(img.shape) == 2:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-            if st.button("🔍 Run Analysis", key="run_analysis"):
-                with st.spinner("Analyzing MRI scan..."):
-                    success, result = safe_predict(img, model, class_labels)
+            # Validate image
+            valid, error_msg = validate_image(img)
+            if not valid:
+                st.error(f"Image validation failed: {error_msg}")
+            else:
+                st.image(img, caption="Uploaded MRI Scan", width=300)
+                st.session_state.uploaded_img = img
 
-                    if not success:
-                        st.error(f"Analysis failed: {result}")
-                    else:
-                        label = result["label"]
-                        confidence = result["confidence"]
-                        probs = result["probs"]
-                        level = result["confidence_level"]
+                if st.button("🔍 Run Analysis", key="run_analysis"):
+                    with st.spinner("Analyzing MRI scan..."):
+                        # Preprocess once and reuse for predict and Grad-CAM
+                        preprocessed_img = preprocess_image(img)
+                        st.write(f"[DEBUG] preprocessed image shape: {preprocessed_img.shape}")
+
+                        try:
+                            label, confidence, probs = predict_image(preprocessed_img, model, class_labels, preprocessed=True)
+                            st.write(f"[DEBUG] prediction probabilities: {probs}")
+                        except Exception as exc:
+                            st.error(f"Prediction failed: {exc}")
+                            st.stop()
+
+                        confidence_level = classify_confidence(confidence)
+                        decision, message = clinical_decision(label, confidence_level)
+
+                        scan_record = {
+                            "id": str(uuid.uuid4()),
+                            "timestamp": datetime.now().isoformat(),
+                            "prediction": label,
+                            "confidence": confidence,
+                            "confidence_level": confidence_level,
+                            "decision": decision,
+                            "message": message,
+                            "probabilities": {class_labels[i]: float(probs[i]) for i in range(len(probs))}
+                        }
+
+                        # Save to patient
+                        pm.add_scan_record(st.session_state.current_patient, scan_record)
+
+                        # Set as current scan
+                        st.session_state.current_scan = scan_record["id"]
+                        st.success("Analysis complete!")
+
+                        # Keep processed batch for Grad-CAM in state
+                        st.session_state.preprocessed_img = preprocessed_img
+                        st.rerun()
 
                         decision, message = clinical_decision(label, level)
 

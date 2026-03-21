@@ -3,6 +3,7 @@ import json
 import tensorflow as tf
 import cv2
 from pathlib import Path
+from tensorflow.keras.applications.efficientnet import preprocess_input
 
 # ================= PATH CONFIG =================
 MODEL_PATH = Path("model/final_brain_mri_model.keras")
@@ -44,57 +45,32 @@ def load_model_and_labels():
 
 # ================= PREPROCESS =================
 def preprocess_image(img):
-    """
-    Preprocess image for model input.
-    Ensures RGB format, correct size, and proper normalization.
-    """
-    if img is None:
-        raise ValueError("Image is None")
+    img = cv2.resize(img, (224, 224))
 
-    if not isinstance(img, np.ndarray):
-        raise ValueError("Image must be numpy array")
-
-    if img.size == 0:
-        raise ValueError("Image is empty")
-
-    if len(img.shape) not in [2, 3]:
-        raise ValueError("Unsupported image dimensions")
-
-    # Convert grayscale → RGB
     if len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    elif img.shape[2] == 1:
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
-    # Ensure 3 channels
-    if img.shape[2] != 3:
-        raise ValueError("Image must have 3 color channels")
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # Resize safely
-    try:
-        img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_LINEAR)
-    except Exception as e:
-        raise ValueError(f"Resize failed: {e}")
+    img = preprocess_input(img)   
 
-    # Convert BGR → RGB if needed (OpenCV loads as BGR)
-    if img.shape[2] == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    # Normalize to [0, 1] - remove preprocess_input for consistency
-    img = img.astype(np.float32) / 255.0
-
-    # Add batch dimension
     img = np.expand_dims(img, axis=0)
 
     return img
 
 # ================= PREDICT =================
-def predict_image(img, model, class_labels):
+def predict_image(img, model, class_labels, preprocessed=False):
     """
     Make prediction with robust error handling.
+    If preprocessed=True, img is expected to be a preprocessed batch of shape (1,224,224,3).
     """
     try:
-        processed = preprocess_image(img)
+        if preprocessed:
+            processed = img
+            if processed is None or len(processed.shape) != 4 or processed.shape[0] != 1:
+                raise ValueError("Preprocessed input must be a batch with shape (1,224,224,3)")
+        else:
+            processed = preprocess_image(img)
 
         preds = model.predict(processed, verbose=0)
         if preds is None or len(preds) == 0:

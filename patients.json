@@ -19,6 +19,36 @@
           "notumor": 0.45175305008888245,
           "pituitary": 0.02151753194630146
         }
+      },
+      {
+        "id": "26688299-ca57-47b1-ba0a-328ae0314ccf",
+        "timestamp": "2026-03-21T20:33:03.891281",
+        "prediction": "meningioma",
+        "confidence": 0.8384113907814026,
+        "confidence_level": "HIGH",
+        "decision": "ALERT",
+        "message": "Tumor likely. Immediate specialist consultation required.",
+        "probabilities": {
+          "glioma": 0.15820032358169556,
+          "meningioma": 0.8384113907814026,
+          "notumor": 0.0030889823101460934,
+          "pituitary": 0.00029938173247501254
+        }
+      },
+      {
+        "id": "789b5337-f6b3-4025-98ca-946a6ab44dee",
+        "timestamp": "2026-03-21T20:51:24.398390",
+        "prediction": "pituitary",
+        "confidence": 0.9989547729492188,
+        "confidence_level": "HIGH",
+        "decision": "ALERT",
+        "message": "Tumor likely. Immediate specialist consultation required.",
+        "probabilities": {
+          "glioma": 3.136391387670301e-05,
+          "meningioma": 0.0007198807434178889,
+          "notumor": 0.0002939525875262916,
+          "pituitary": 0.9989547729492188
+        }
       }
     ]
   },
