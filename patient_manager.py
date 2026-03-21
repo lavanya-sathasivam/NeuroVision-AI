@@ -109,7 +109,22 @@ def add_scan_record(patient_id, scan_record):
     save_patients(patients)
 
 
-def save_scan_image(img_array, filename):
-    image_path = IMG_FOLDER / filename
-    img_array.save(image_path)
-    return str(image_path)
+def get_scan_record(patient_id, scan_id):
+    patient = get_patient(patient_id)
+    if not patient:
+        return None
+    scans = patient.get("scans", [])
+    for scan in scans:
+        if scan.get("id") == scan_id:
+            return scan
+    return None
+
+
+def delete_scan_record(patient_id, scan_id):
+    patients = load_patients()
+    if patient_id not in patients:
+        raise ValueError(f"Patient ID '{patient_id}' not found")
+
+    scans = patients[patient_id].get("scans", [])
+    patients[patient_id]["scans"] = [s for s in scans if s.get("id") != scan_id]
+    save_patients(patients)

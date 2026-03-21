@@ -6,39 +6,18 @@
     "created_at": "2026-03-20 21:48:46",
     "scans": [
       {
-        "id": "a38da909-efca-4b72-a4fb-f8c82ae578e7",
-        "timestamp": "2026-03-20 21:53:39.788414",
+        "id": "b053a575-a9ce-4598-ac0b-14365dd81300",
+        "timestamp": "2026-03-21T17:15:24.898460",
         "prediction": "notumor",
         "confidence": 0.45175305008888245,
+        "confidence_level": "LOW",
+        "decision": "UNCERTAIN",
+        "message": "Radiologist review REQUIRED. Do not rely on AI.",
         "probabilities": {
           "glioma": 0.11728668212890625,
           "meningioma": 0.409442663192749,
           "notumor": 0.45175305008888245,
           "pituitary": 0.02151753194630146
-        }
-      },
-      {
-        "id": "b28b3136-c0de-424a-85ab-19440367cf37",
-        "timestamp": "2026-03-21 12:46:34.777706",
-        "prediction": "glioma",
-        "confidence": 0.6287030577659607,
-        "probabilities": {
-          "glioma": 0.6287030577659607,
-          "meningioma": 0.08700050413608551,
-          "notumor": 0.24020443856716156,
-          "pituitary": 0.044092077761888504
-        }
-      },
-      {
-        "id": "ff68663f-6bed-4eff-b472-b1e72f523183",
-        "timestamp": "2026-03-21 13:39:01.401780",
-        "prediction": "glioma",
-        "confidence": 0.6287030577659607,
-        "probabilities": {
-          "glioma": 0.6287030577659607,
-          "meningioma": 0.08700050413608551,
-          "notumor": 0.24020443856716156,
-          "pituitary": 0.044092077761888504
         }
       }
     ]
@@ -61,6 +40,29 @@
           "meningioma": 0.08700050413608551,
           "notumor": 0.24020443856716156,
           "pituitary": 0.044092077761888504
+        }
+      }
+    ]
+  },
+  "1": {
+    "name": "no",
+    "age": 11,
+    "gender": "Male",
+    "created_at": "2026-03-21 19:42:25",
+    "scans": [
+      {
+        "id": "cca17fdd-1e61-4c44-9bce-51d54891f422",
+        "timestamp": "2026-03-21T19:43:00.889935",
+        "prediction": "glioma",
+        "confidence": 0.630279004573822,
+        "confidence_level": "MEDIUM",
+        "decision": "CAUTION",
+        "message": "Further imaging and specialist review recommended.",
+        "probabilities": {
+          "glioma": 0.630279004573822,
+          "meningioma": 0.08714019507169724,
+          "notumor": 0.23822854459285736,
+          "pituitary": 0.044352222234010696
         }
       }
     ]

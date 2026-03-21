@@ -7,7 +7,7 @@ from datetime import datetime
 from PIL import Image
 import altair as alt
 
-from utils import load_model_and_labels, preprocess_image, safe_predict, classify_confidence, clinical_decision
+from utils import load_model_and_labels, preprocess_image, safe_predict, clinical_decision, validate_image
 import patient_manager as pm
 from gradcam import generate_gradcam, overlay_heatmap
 
@@ -21,210 +21,273 @@ def get_model():
 
 model, class_labels = get_model()
 
-# ================= SESSION =================
-if "patient_id" not in st.session_state:
-    st.session_state.patient_id = None
+# ================= SESSION STATE =================
+if "current_patient" not in st.session_state:
+    st.session_state.current_patient = None
 
-if "record" not in st.session_state:
-    st.session_state.record = None
+if "current_scan" not in st.session_state:
+    st.session_state.current_scan = None
 
-if "img" not in st.session_state:
-    st.session_state.img = None
+if "show_add_patient" not in st.session_state:
+    st.session_state.show_add_patient = False
 
-if "show_add" not in st.session_state:
-    st.session_state.show_add = False
+if "uploaded_img" not in st.session_state:
+    st.session_state.uploaded_img = None
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.title("👤 Patients")
+    st.title("👨‍⚕️ Doctor Information")
 
-    search = st.text_input("Search")
-    patients = pm.search_patients(search)
+    # Doctor Info
+    doctor_name = st.text_input("Name", "Dr. Maya Rao", key="doctor_name")
+    doctor_dept = st.text_input("Department", "Radiology", key="doctor_dept")
+    doctor_hospital = st.text_input("Hospital", "City General Hospital", key="doctor_hospital")
 
-    options = [""] + [f"{p['id']} | {p['name']}" for p in patients]
-    selected = st.selectbox("Select", options)
-
-    if selected:
-        st.session_state.patient_id = selected.split("|")[0].strip()
-        st.session_state.record = None
-
-    if st.button("➕ Add Patient"):
-        st.session_state.show_add = True
-
-# ================= HEADER =================
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.title("🧠 NeuroVision Clinical AI")
-    st.caption("MRI Tumor Detection & Decision Support")
-
-with col2:
-    st.markdown("**Doctor**")
-    doctor_name = st.text_input("Name", "Dr. Maya Rao")
-    doctor_dept = st.text_input("Dept", "Radiology")
-
-st.divider()
-
-# ================= ADD PATIENT =================
-if st.session_state.show_add:
-    with st.form("add_patient"):
-        st.subheader("Add Patient")
-
-        pid = st.text_input("Patient ID")
-        name = st.text_input("Name")
-        age = st.number_input("Age", 0, 120)
-        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-
-        if st.form_submit_button("Save"):
-            if not pid or not name:
-                st.error("Required fields missing")
-            else:
-                pm.add_patient(pid, name, age=age, gender=gender)
-                st.success("Patient added")
-                st.session_state.patient_id = pid
-                st.session_state.show_add = False
-
-# ================= VALIDATION =================
-if not st.session_state.patient_id:
-    st.warning("Select or add a patient to begin")
-    st.stop()
-
-patient = pm.get_patient(st.session_state.patient_id)
-
-# ================= PATIENT INFO =================
-st.subheader("Patient Info")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Name", patient.get("name"))
-c2.metric("Age", patient.get("age"))
-c3.metric("Gender", patient.get("gender"))
-
-st.divider()
-
-# ================= UPLOAD =================
-st.subheader("Upload MRI")
-
-uploaded = st.file_uploader("Upload scan", type=["jpg", "png"])
-
-if uploaded:
-    file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-    if img is None or img.size == 0:
-        st.error("Invalid image")
-        st.stop()
-
-    if img.shape[0] < 100 or img.shape[1] < 100:
-        st.error("Low resolution image")
-        st.stop()
-
-    st.image(img, caption="MRI Scan")
-
-    if st.button("Run Analysis"):
-        with st.spinner("Analyzing..."):
-
-            success, result = safe_predict(img, model, class_labels)
-
-            if not success:
-                st.error(result)
-                st.stop()
-
-            label = result["label"]
-            confidence = result["confidence"]
-            probs = result["probs"]
-            level = result["confidence_level"]
-
-            decision, message = clinical_decision(label, level)
-
-        record = {
-            "id": str(uuid.uuid4()),
-            "timestamp": str(datetime.now()),
-            "prediction": label,
-            "confidence": confidence,
-            "confidence_level": level,
-            "decision": decision,
-            "probabilities": {class_labels[i]: float(probs[i]) for i in range(len(probs))}
-        }
-
-        pm.add_scan_record(st.session_state.patient_id, record)
-
-        st.session_state.record = record
-        st.session_state.img = img
-
-# ================= RESULTS =================
-record = st.session_state.record
-
-if record:
     st.divider()
+    st.caption("NeuroVision AI v2.0 - Clinical Decision Support")
 
-    st.info("⚠️ AI-assisted only. Final diagnosis must be made by a radiologist.")
+# ================= MAIN PAGE =================
 
-    st.subheader("Results")
+# Add Patient Form
+if st.session_state.show_add_patient:
+    st.header("Add New Patient")
+    with st.form("add_patient_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            patient_id = st.text_input("Patient ID", key="new_patient_id")
+            patient_name = st.text_input("Full Name", key="new_patient_name")
+        with col2:
+            patient_age = st.number_input("Age", min_value=0, max_value=120, key="new_patient_age")
+            patient_gender = st.selectbox("Gender", ["Male", "Female", "Other"], key="new_patient_gender")
 
-    # STATUS
-    if record["decision"] == "SAFE":
-        st.success(record["decision"])
+        submitted = st.form_submit_button("Save Patient")
+        if submitted:
+            if not patient_id or not patient_name:
+                st.error("Patient ID and Name are required.")
+            else:
+                try:
+                    pm.add_patient(patient_id, patient_name, age=patient_age, gender=patient_gender)
+                    st.success(f"Patient {patient_name} added successfully!")
+                    st.session_state.current_patient = patient_id
+                    st.session_state.show_add_patient = False
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
 
-    elif record["decision"] == "ALERT":
-        st.error(record["decision"])
+# Scan Details View
+elif st.session_state.current_scan and st.session_state.current_patient:
+    scan = pm.get_scan_record(st.session_state.current_patient, st.session_state.current_scan)
+    if scan:
+        st.header("Scan Details")
 
-    elif record["decision"] == "CAUTION":
-        st.warning(record["decision"])
+        # Back button
+        if st.button("⬅️ Back to Dashboard", key="back_to_dashboard"):
+            st.session_state.current_scan = None
+            st.rerun()
 
-    else:
-        st.warning("UNCERTAIN")
-
-    st.write(record["decision"])
-    st.write(record["confidence_level"])
-
-    st.metric("Confidence", f"{record['confidence']*100:.2f}%")
-    st.progress(int(record["confidence"] * 100))
-
-    # ================= CHART =================
-    df = pd.DataFrame(record["probabilities"].items(), columns=["Class", "Prob"])
-
-    chart = alt.Chart(df).mark_bar().encode(
-        x="Class",
-        y="Prob",
-        color=alt.condition(
-            alt.datum.Class == record["prediction"],
-            alt.value("#d00000"),
-            alt.value("#4e79a7"),
-        )
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
-    # ================= GRADCAM =================
-    st.subheader("Grad-CAM")
-
-    try:
-        processed = preprocess_image(st.session_state.img)
-
-        heatmap = generate_gradcam(model, processed)
-
-        if heatmap is None:
-            raise ValueError("Grad-CAM failed internally")
-
-        base = cv2.resize(st.session_state.img, (224, 224))
-
-        overlay = overlay_heatmap(base, heatmap)
+        st.info("⚠️ This is AI-assisted analysis. Final diagnosis must be made by a qualified radiologist.")
 
         col1, col2 = st.columns(2)
-        col1.image(st.session_state.img, caption="Original")
-        col2.image(overlay, caption="AI Focus")
+        with col1:
+            prediction_display = scan['prediction'].capitalize()
+            if scan.get('decision') == "UNCERTAIN":
+                prediction_display = "UNCERTAIN"
+            st.metric("Prediction", prediction_display)
+            st.metric("Confidence", f"{scan['confidence']*100:.1f}%")
+            st.metric("Confidence Level", scan.get('confidence_level', 'UNKNOWN'))
+        with col2:
+            decision = scan.get('decision', 'UNKNOWN')
+            if decision == "SAFE":
+                st.success(f"Decision: {decision}")
+            elif decision == "ALERT":
+                st.error(f"Decision: {decision}")
+            elif decision == "UNCERTAIN":
+                st.warning(f"Decision: {decision}")
+            elif decision == "CAUTION":
+                st.warning(f"Decision: {decision}")
+            else:
+                st.info(f"Decision: {decision}")
+            st.write(scan.get('message', ''))
 
-    except Exception as e:
-        st.warning(f"Grad-CAM unavailable: {e}")
-# ================= HISTORY =================
-st.divider()
-st.subheader("History")
+        # Probability Chart
+        if 'probabilities' in scan:
+            probs_df = pd.DataFrame(scan['probabilities'].items(), columns=["Class", "Probability"])
+            chart = alt.Chart(probs_df).mark_bar().encode(
+                x="Class",
+                y="Probability",
+                color=alt.condition(
+                    alt.datum.Class == scan['prediction'],
+                    alt.value("#d00000"),
+                    alt.value("#4e79a7"),
+                )
+            )
+            st.altair_chart(chart, use_container_width=True)
 
-history = pm.get_patient_history(st.session_state.patient_id)
+        # Grad-CAM
+        if st.session_state.uploaded_img is not None:
+            st.subheader("AI Focus Areas (Grad-CAM)")
+            try:
+                processed = preprocess_image(st.session_state.uploaded_img)
+                heatmap = generate_gradcam(model, processed)
 
-if history:
-    df = pd.DataFrame(history)
-    df["confidence"] = df["confidence"] * 100
-    st.dataframe(df[["timestamp", "prediction", "confidence"]])
+                if heatmap is not None:
+                    overlay = overlay_heatmap(st.session_state.uploaded_img.copy(), heatmap)
+                    if overlay is not None:
+                        col1, col2 = st.columns(2)
+                        col1.image(st.session_state.uploaded_img, caption="Original Scan", width=300)
+                        col2.image(overlay, caption="AI Focus Areas", width=300)
+                    else:
+                        st.warning("Grad-CAM visualization failed to generate overlay.")
+                else:
+                    st.warning("Grad-CAM visualization unavailable for this scan.")
+            except Exception as e:
+                st.warning(f"Grad-CAM visualization failed: {e}")
+    else:
+        st.error("Scan not found.")
+        st.session_state.current_scan = None
+
+# Patient Selection Page
+elif not st.session_state.current_patient:
+    st.header("🧠 NeuroVision AI - Patient Selection")
+    st.markdown("Search and select a patient to begin analysis, or add a new patient.")
+
+    # Search Input
+    search_term = st.text_input("Search by Patient ID or Name", key="search_term", placeholder="Enter patient ID or name...")
+
+    # Get filtered patients
+    patients = pm.search_patients(search_term)
+
+    # Patient Selection Dropdown
+    if patients:
+        patient_options = [""] + [f"{p['id']} - {p['name']}" for p in patients]
+        selected_patient = st.selectbox("Select Patient", patient_options, key="selected_patient")
+
+        if selected_patient:
+            patient_id = selected_patient.split(" - ")[0]
+            st.session_state.current_patient = patient_id
+            st.session_state.current_scan = None  # Reset scan when switching patient
+            st.rerun()
+    else:
+        st.info("No patients found matching your search.")
+
+    # Add Patient Button
+    st.divider()
+    if st.button("➕ Add New Patient", key="add_patient_btn"):
+        st.session_state.show_add_patient = True
+
+# Patient Dashboard
 else:
-    st.info("No history yet")
+    patient = pm.get_patient(st.session_state.current_patient)
+    if not patient:
+        st.error("Patient not found.")
+        st.session_state.current_patient = None
+        st.rerun()
+
+    # Header
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.header(f"Patient Dashboard - {patient['name']}")
+    with col2:
+        if st.button("🔄 Switch Patient", key="switch_patient"):
+            st.session_state.current_patient = None
+            st.session_state.current_scan = None
+            st.rerun()
+
+    # Patient Info
+    st.subheader("Patient Information")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("ID", st.session_state.current_patient)
+    col2.metric("Name", patient['name'])
+    col3.metric("Age", patient.get('age', 'N/A'))
+    col4.metric("Gender", patient.get('gender', 'N/A'))
+
+    st.divider()
+
+    # New MRI Consultation
+    st.subheader("🚀 New MRI Consultation")
+    uploaded_file = st.file_uploader("Upload MRI Scan", type=["jpg", "png", "jpeg"], key="upload_scan")
+
+    if uploaded_file:
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        # Validate image
+        valid, error_msg = validate_image(img)
+        if not valid:
+            st.error(f"Image validation failed: {error_msg}")
+        else:
+            st.image(img, caption="Uploaded MRI Scan", width=300)
+            st.session_state.uploaded_img = img
+
+            if st.button("🔍 Run Analysis", key="run_analysis"):
+                with st.spinner("Analyzing MRI scan..."):
+                    success, result = safe_predict(img, model, class_labels)
+
+                    if not success:
+                        st.error(f"Analysis failed: {result}")
+                    else:
+                        label = result["label"]
+                        confidence = result["confidence"]
+                        probs = result["probs"]
+                        level = result["confidence_level"]
+
+                        decision, message = clinical_decision(label, level)
+
+                        # Create scan record
+                        scan_record = {
+                            "id": str(uuid.uuid4()),
+                            "timestamp": datetime.now().isoformat(),
+                            "prediction": label,
+                            "confidence": confidence,
+                            "confidence_level": level,
+                            "decision": decision,
+                            "message": message,
+                            "probabilities": {class_labels[i]: float(probs[i]) for i in range(len(probs))}
+                        }
+
+                        # Save to patient
+                        pm.add_scan_record(st.session_state.current_patient, scan_record)
+
+                        # Set as current scan
+                        st.session_state.current_scan = scan_record["id"]
+                        st.success("Analysis complete!")
+                        st.rerun()
+
+    st.divider()
+
+    # Scan History (Collapsible)
+    with st.expander("📂 Scan History", expanded=False):
+        history = pm.get_patient_history(st.session_state.current_patient)
+
+        if history:
+            # Create dataframe
+            df = pd.DataFrame(history)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', errors='coerce')
+            df = df.sort_values('timestamp', ascending=False)
+
+            # Clean data
+            df['confidence'] = (df['confidence'] * 100).round(1).astype(str) + '%'
+            df['confidence_level'] = df.get('confidence_level', 'UNKNOWN')
+            df['decision'] = df.get('decision', 'UNKNOWN')
+
+            # Display table with buttons
+            for idx, row in df.iterrows():
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 1, 1, 1])
+                timestamp_str = row['timestamp'].strftime('%Y-%m-%d %H:%M') if pd.notna(row['timestamp']) else 'UNKNOWN'
+                col1.write(timestamp_str)
+                col2.write(row['prediction'].capitalize())
+                col3.write(f"{row['confidence']} ({row['confidence_level']})")
+                col4.write(row['decision'])
+                if col5.button("👁️ View", key=f"view_{row['id']}"):
+                    st.session_state.current_scan = row['id']
+                    st.rerun()
+                if col6.button("🗑️ Delete", key=f"delete_{row['id']}"):
+                    try:
+                        pm.delete_scan_record(st.session_state.current_patient, row['id'])
+                        st.success("Scan deleted successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to delete scan: {e}")
+        else:
+            st.info("No scans available for this patient.")
+
