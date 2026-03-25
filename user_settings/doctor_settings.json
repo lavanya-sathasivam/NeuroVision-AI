@@ -1,0 +1,43 @@
+{
+  "display": {
+    "dark_mode": false,
+    "show_advanced_metrics": false,
+    "chart_style": "Default",
+    "animation_enabled": true,
+    "sidebar_width": "Medium"
+  },
+  "model": {
+    "confidence_threshold": 0.7,
+    "alert_threshold": 0.85,
+    "caution_threshold": 0.7,
+    "batch_processing": false,
+    "gpu_acceleration": true
+  },
+  "notifications": {
+    "enabled": true,
+    "notify_high_confidence": true,
+    "notify_alerts": true,
+    "notify_uncertain": true,
+    "notify_analysis_complete": true,
+    "sound_enabled": true
+  },
+  "privacy": {
+    "auto_save": true,
+    "anonymize_exports": true,
+    "data_retention_days": "Never",
+    "log_retention_days": "30 days",
+    "hipaa_mode": false
+  },
+  "email": {
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "email_address": "",
+    "email_password": "",
+    "notifications_via_email": false
+  },
+  "reports": {
+    "auto_generate_reports": false,
+    "report_frequency": "Weekly",
+    "report_recipients": []
+  }
+}

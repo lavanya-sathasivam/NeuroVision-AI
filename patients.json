@@ -49,6 +49,66 @@
           "notumor": 0.0002939525875262916,
           "pituitary": 0.9989547729492188
         }
+      },
+      {
+        "id": "091cbf43-2b54-4407-97fa-b39f2c7d6b49",
+        "timestamp": "2026-03-21T22:11:35.991217",
+        "prediction": "notumor",
+        "confidence": 0.9961168766021729,
+        "confidence_level": "HIGH",
+        "decision": "SAFE",
+        "message": "No tumor detected. Routine follow-up recommended.",
+        "probabilities": {
+          "glioma": 0.00041302264435216784,
+          "meningioma": 0.0032002630177885294,
+          "notumor": 0.9961168766021729,
+          "pituitary": 0.00026983299176208675
+        }
+      },
+      {
+        "id": "83048e4a-bc1f-41df-aea3-38d771c08806",
+        "timestamp": "2026-03-23T15:43:28.457423",
+        "prediction": "notumor",
+        "confidence": 0.9861429333686829,
+        "confidence_level": "HIGH",
+        "decision": "SAFE",
+        "message": "No tumor detected. Routine follow-up recommended.",
+        "probabilities": {
+          "glioma": 0.00023757622693665326,
+          "meningioma": 0.0004197232483420521,
+          "notumor": 0.9861429333686829,
+          "pituitary": 0.013199812732636929
+        }
+      },
+      {
+        "id": "992322db-0450-4e44-b7e4-1a1a175d4426",
+        "timestamp": "2026-03-25T19:11:34.762461",
+        "prediction": "meningioma",
+        "confidence": 0.9954056739807129,
+        "confidence_level": "HIGH",
+        "decision": "ALERT",
+        "message": "Tumor likely. Immediate specialist consultation required.",
+        "probabilities": {
+          "glioma": 0.0045763421803712845,
+          "meningioma": 0.9954056739807129,
+          "notumor": 9.030368346429896e-06,
+          "pituitary": 9.068523468158673e-06
+        }
+      },
+      {
+        "id": "8194545c-318a-4788-b8aa-33aabc312582",
+        "timestamp": "2026-03-25T19:25:37.888588",
+        "prediction": "meningioma",
+        "confidence": 0.9954056739807129,
+        "confidence_level": "HIGH",
+        "decision": "ALERT",
+        "message": "Tumor likely. Immediate specialist consultation required.",
+        "probabilities": {
+          "glioma": 0.0045763421803712845,
+          "meningioma": 0.9954056739807129,
+          "notumor": 9.030368346429896e-06,
+          "pituitary": 9.068523468158673e-06
+        }
       }
     ]
   },
